@@ -182,6 +182,131 @@ class ImageBlock(CBlock):
         return f"ImageBlock({self.value}, {self._meta.__repr__()})"
 
 
+class AudioBlock(CBlock):
+    """An `AudioBlock` represents audio data (as base64-encoded audio).
+
+    Supports any audio format. Format validation is deferred to backend APIs.
+    Audio data can be provided as a data URI or raw base64 string.
+
+    Args:
+        value (str): A valid base64-encoded audio string (with or without a data URI prefix).
+        format (str | None): Audio format (e.g., "wav", "mp3"). Auto-detected from data URI if present.
+            Required if value is raw base64 without data URI prefix.
+        meta (dict[str, Any] | None): Optional metadata to associate with this audio block.
+
+    Attributes:
+        format (str): The audio format (e.g., "wav", "mp3", "flac").
+
+    Raises:
+        AssertionError: If value is not valid base64-encoded audio.
+        ValueError: If format cannot be determined.
+
+    Examples:
+        >>> # From data URI (format auto-detected)
+        >>> audio = AudioBlock("data:audio/wav;base64,UklGRi...")
+        >>> audio.format
+        'wav'
+
+        >>> # From raw base64 with explicit format
+        >>> audio = AudioBlock("UklGRi...", format="wav")
+        >>> audio.format
+        'wav'
+    """
+
+    def __init__(
+        self, value: str, format: str | None = None, meta: dict[str, Any] | None = None
+    ):
+        """Initialize AudioBlock with base64 validation.
+
+        Args:
+            value: Base64-encoded audio data (with or without data URI prefix).
+            format: Audio format (auto-detected from data URI if not provided).
+            meta: Optional metadata.
+
+        Raises:
+            AssertionError: If base64 encoding is invalid.
+            ValueError: If format cannot be determined.
+        """
+        # Determine format
+        detected_format = self.get_format_from_data_uri(value)
+        final_format = format or detected_format
+
+        if final_format is None:
+            raise ValueError(
+                "Audio format must be specified either via 'format' parameter "
+                "or data URI (e.g., data:audio/wav;base64,...)"
+            )
+
+        # Validate base64 encoding only (no format validation)
+        assert self.is_valid_base64_audio(value), (
+            "Invalid base64 string representation of audio."
+        )
+
+        # Store format as instance attribute
+        self.format = final_format
+
+        # Initialize parent CBlock
+        super().__init__(value, meta)
+
+    @staticmethod
+    def get_format_from_data_uri(s: str) -> str | None:
+        """Extract audio format from data URI.
+
+        Parses data URIs like: data:audio/wav;base64,<data>
+        Accepts any format string (no whitelist validation).
+
+        Args:
+            s: Data URI string
+
+        Returns:
+            Format string (e.g., "wav", "mp3", "midi") or None if not a data URI
+        """
+        if not ("data:" in s and "base64," in s):
+            return None
+
+        # Extract MIME type
+        mime_part = s.split("base64,")[0]
+        if "audio/" not in mime_part:
+            return None
+
+        # Return raw format string (no validation against whitelist)
+        return mime_part.split("audio/", 1)[1].rstrip(";")
+
+    @staticmethod
+    def is_valid_base64_audio(s: str) -> bool:
+        """Validate base64-encoded audio data.
+
+        Only validates base64 encoding; format validation is deferred to backend.
+
+        Args:
+            s: Base64 string (with or without data URI prefix)
+
+        Returns:
+            True if valid base64, False otherwise
+        """
+        try:
+            # Strip data URI prefix if present
+            if "data:" in s and "base64," in s:
+                s = s.split("base64,")[1]
+
+            # Add padding if necessary
+            s = s.strip()
+            mod4 = len(s) % 4
+            if mod4 > 0:
+                s = s + "=" * (4 - mod4)
+
+            # Decode base64
+            base64.b64decode(s, validate=True)
+            return True
+
+        except (binascii.Error, ValueError):
+            return False
+
+    def __repr__(self) -> str:
+        """Provides a python-parsable representation of the block (usually)."""
+        return f"AudioBlock({self.value}, {self._meta.__repr__()})"
+
+
 S = typing_extensions.TypeVar("S", default=Any, covariant=True)
 """Used for class definitions for Component and ModelOutputThunk; also used for functions that don't accept CBlocks. Defaults to `Any`."""
 

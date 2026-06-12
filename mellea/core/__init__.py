@@ -11,6 +11,7 @@ definitions shared across the library.
 
 from .backend import Backend, BaseModelSubclass, generate_walk
 from .base import (
+    AudioBlock,
     C,
     CBlock,
     Component,
@@ -54,6 +55,7 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "AudioBlock",
     "Backend",
     "BaseModelSubclass",
     "C",
