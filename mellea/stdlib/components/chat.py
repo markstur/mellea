@@ -14,6 +14,8 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Literal
 
 from ...core import (
+    AudioBlock,
+    AudioUrlBlock,
     CBlock,
     Component,
     Context,
@@ -40,6 +42,8 @@ class Message(Component["Message"]):
             images (supported by all vision backends) or `ImageUrlBlock` for
             URL-referenced images (supported by OpenAI-compatible backends only;
             backends that require base64 will raise a ``ValueError``).
+        audio (list[AudioBlock | AudioUrlBlock] | None): Optional audio
+            associated with the message.
         documents (list[Document] | None): Optional documents associated with
             the message.
 
@@ -56,13 +60,15 @@ class Message(Component["Message"]):
         content: str,
         *,
         images: None | list[ImageBlock | ImageUrlBlock] = None,
+        audio: None | list[AudioBlock | AudioUrlBlock] = None,
         documents: None | Iterable[str | Document] = None,
     ):
-        """Initialize a Message with a role, text content, and optional images and documents."""
+        """Initialize a Message with a role, text content, and optional images, audio, and documents."""
         self.role = role
         self.content = content  # TODO this should be private.
         self._content_cblock = CBlock(self.content)
         self._images = images
+        self._audio = audio
         self._docs = _coerce_to_documents(documents)
 
     @property
@@ -70,18 +76,25 @@ class Message(Component["Message"]):
         """Returns the images associated with this message."""
         return self._images
 
+    @property
+    def audio(self) -> None | list[AudioBlock | AudioUrlBlock]:
+        """Returns the audio associated with this message."""
+        return self._audio
+
     def parts(self) -> list[Component | CBlock | ModelOutputThunk]:
-        """Return the constituent parts of this message, including content, documents, and images.
+        """Return the constituent parts of this message, including content, documents, images, and audio.
 
         Returns:
             list[Component | CBlock | ModelOutputThunk]: A list beginning with the content block,
-            followed by any attached documents and image blocks.
+            followed by any attached documents, image blocks, and audio blocks.
         """
         parts: list[Component | CBlock | ModelOutputThunk] = [self._content_cblock]
         if self._docs is not None:
             parts.extend(self._docs)
         if self._images is not None:
             parts.extend(self._images)
+        if self._audio is not None:
+            parts.extend(self._audio)
         return parts
 
     def format_for_llm(self) -> TemplateRepresentation:
@@ -94,6 +107,8 @@ class Message(Component["Message"]):
             obj=self,
             args={"content": self._content_cblock, "documents": self._docs},
             template_order=["*", "Message"],
+            images=self._images,
+            audio=self._audio,
         )
 
     def __repr__(self) -> str:
@@ -101,6 +116,10 @@ class Message(Component["Message"]):
         images = []
         if self._images is not None:
             images = [f"{str(i.value)[:20]}..." for i in self._images]
+
+        audio = []
+        if self._audio is not None:
+            audio = [f"{str(a.value)[:20]}..." for a in self._audio]
 
         docs = []
         if self._docs is not None:
@@ -113,7 +132,7 @@ class Message(Component["Message"]):
                 + "..."
                 for doc in self._docs
             ]
-        return f'mellea.Message(role="{self.role}", content="{self.content}", images="{images}", documents="{docs}")'
+        return f'mellea.Message(role="{self.role}", content="{self.content}", images="{images}", audio="{audio}", documents="{docs}")'
 
     def _parse(self, computed: ModelOutputThunk) -> "Message":
         """Parse the model output into a Message."""
